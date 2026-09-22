@@ -168,12 +168,12 @@ class TypingApp(tk.Tk):
             messagebox.showinfo("Clipboard is empty", "There is no text in the clipboard.")
             return
         self._source_text = text
-        visible = normalise_line_endings(text).replace("\t", "в†’   ")
+        visible = normalise_line_endings(text).replace("\t", "\u2192   ")
         self._preview.configure(state="normal")
         self._preview.delete("1.0", "end")
         self._preview.insert("1.0", visible)
         self._preview.configure(state="disabled")
-        self._file_name.set(f"Clipboard вЂў {len(text)} symbols")
+        self._file_name.set(f"Clipboard \u2022 {len(text)} symbols")
         self._progress_value.set(0)
         self._progress_text.set(f"0 / {len(text)}")
         self._status.set("Clipboard text is ready. Focus the target editor and press F8.")
