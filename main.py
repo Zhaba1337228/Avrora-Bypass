@@ -1,0 +1,7 @@
+"""Development entry point for Code Typing Studio."""
+
+from code_typing_utility.ui.app import run
+
+
+if __name__ == "__main__":
+    run()
