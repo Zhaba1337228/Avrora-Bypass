@@ -87,6 +87,7 @@ class TypingApp(tk.Tk):
         action_row = tk.Frame(body, bg=self.BACKGROUND)
         action_row.grid(row=1, column=0, sticky="ew", pady=14)
         action_row.columnconfigure(1, weight=1)
+        self._button(action_row, "Paste clipboard", self.load_clipboard, self.ACCENT, "#07151A").grid(row=1, column=0, sticky="w", pady=(8, 0))
         self._button(action_row, "Загрузить код", self.load_file, self.ACCENT, "#07151A").grid(row=0, column=0, sticky="w")
         tk.Label(action_row, textvariable=self._file_name, bg=self.BACKGROUND, fg=self.MUTED, font=("Segoe UI", 10)).grid(row=0, column=1, sticky="w", padx=12)
         self._toggle_button = self._button(action_row, "Старт  F8", self.toggle, self.ACCENT, "#07151A")
@@ -156,6 +157,26 @@ class TypingApp(tk.Tk):
         self._progress_value.set(0)
         self._progress_text.set(f"0 / {len(self._source_text)}")
         self._status.set("Файл готов. Поставьте курсор в редактор и нажмите F8.")
+
+    def load_clipboard(self) -> None:
+        try:
+            text = self.clipboard_get()
+        except tk.TclError:
+            messagebox.showinfo("Clipboard is empty", "There is no text in the clipboard.")
+            return
+        if not text:
+            messagebox.showinfo("Clipboard is empty", "There is no text in the clipboard.")
+            return
+        self._source_text = text
+        visible = normalise_line_endings(text).replace("\t", "в†’   ")
+        self._preview.configure(state="normal")
+        self._preview.delete("1.0", "end")
+        self._preview.insert("1.0", visible)
+        self._preview.configure(state="disabled")
+        self._file_name.set(f"Clipboard вЂў {len(text)} symbols")
+        self._progress_value.set(0)
+        self._progress_text.set(f"0 / {len(text)}")
+        self._status.set("Clipboard text is ready. Focus the target editor and press F8.")
 
     def toggle(self) -> None:
         if self._state in (TypingState.IDLE, TypingState.ERROR):
