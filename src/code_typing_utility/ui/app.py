@@ -8,7 +8,7 @@ from tkinter import filedialog, messagebox, ttk
 
 from code_typing_utility.domain.models import TypingSettings, TypingState, WorkerEvent, WorkerEventKind
 from code_typing_utility.platforms.pynput_adapter import GlobalHotkeys, PynputInputBackend, check_platform
-from code_typing_utility.services.text_loader import load_text, normalise_line_endings
+from code_typing_utility.services.text_loader import leading_spaces_to_tabs, load_text, normalise_line_endings
 from code_typing_utility.services.typing_worker import TypingWorker
 from code_typing_utility.ui.animated_header import AnimatedHeader
 
@@ -41,6 +41,8 @@ class TypingApp(tk.Tk):
         self._countdown = tk.IntVar(value=3)
         self._variation = tk.IntVar(value=18)
         self._seed = tk.StringVar(value="")
+        self._auto_indent = tk.BooleanVar(value=False)
+        self._tab_width = tk.IntVar(value=4)
         self._file_name = tk.StringVar(value="Файл не выбран")
         self._status = tk.StringVar(value="Загрузите файл и поставьте курсор в редактор.")
         self._progress_text = tk.StringVar(value="0 / 0")
@@ -84,6 +86,11 @@ class TypingApp(tk.Tk):
         self._text_field(settings_card, "Seed", self._seed, 6, 1)
         tk.Label(settings_card, text="Оставьте seed пустым для нового сценария каждый запуск.", bg=self.CARD, fg=self.MUTED, font=("Segoe UI", 9)).grid(row=2, column=0, columnspan=9, sticky="w", padx=16, pady=(4, 14))
 
+        tk.Checkbutton(settings_card, text="Аврора: компенсировать автоотступ", variable=self._auto_indent, bg=self.CARD, fg=self.TEXT, selectcolor=self.FIELD, activebackground=self.CARD, activeforeground=self.TEXT).grid(row=3, column=0, columnspan=9, sticky="w", padx=16, pady=(0, 12))
+
+        self._button(settings_card, "Пробелы → Tab", self.convert_spaces_to_tabs, self.ACCENT, "#07151A").grid(row=4, column=0, columnspan=2, sticky="w", padx=16, pady=(0, 12))
+        self._field(settings_card, "Пробелов на Tab", self._tab_width, 1, 16, 2, 4)
+
         action_row = tk.Frame(body, bg=self.BACKGROUND)
         action_row.grid(row=1, column=0, sticky="ew", pady=14)
         action_row.columnconfigure(1, weight=1)
@@ -99,7 +106,7 @@ class TypingApp(tk.Tk):
         preview_card.columnconfigure(0, weight=1)
         preview_card.rowconfigure(1, weight=1)
         tk.Label(preview_card, text="Предпросмотр", bg=self.CARD, fg=self.TEXT, font=("Segoe UI", 11, "bold")).grid(row=0, column=0, sticky="w", padx=16, pady=(14, 2))
-        tk.Label(preview_card, text="Табуляция показана как →; при вводе отправляется исходный символ Tab.", bg=self.CARD, fg=self.MUTED, font=("Segoe UI", 9)).grid(row=0, column=0, sticky="e", padx=16, pady=(14, 2))
+        tk.Label(preview_card, text="Пробел: ·   Табуляция: →   (показан текст для ввода)", bg=self.CARD, fg=self.MUTED, font=("Segoe UI", 9)).grid(row=0, column=0, sticky="e", padx=16, pady=(14, 2))
         frame = tk.Frame(preview_card, bg=self.CARD)
         frame.grid(row=1, column=0, sticky="nsew", padx=16, pady=(10, 16))
         frame.columnconfigure(0, weight=1)
@@ -148,7 +155,7 @@ class TypingApp(tk.Tk):
         except (OSError, UnicodeDecodeError) as error:
             messagebox.showerror("Не удалось загрузить файл", str(error))
             return
-        visible = normalise_line_endings(self._source_text).replace("\t", "→   ")
+        visible = normalise_line_endings(self._source_text).replace(" ", "·").replace("\t", "→   ")
         self._preview.configure(state="normal")
         self._preview.delete("1.0", "end")
         self._preview.insert("1.0", visible)
@@ -168,7 +175,7 @@ class TypingApp(tk.Tk):
             messagebox.showinfo("Clipboard is empty", "There is no text in the clipboard.")
             return
         self._source_text = text
-        visible = normalise_line_endings(text).replace("\t", "\u2192   ")
+        visible = normalise_line_endings(text).replace(" ", "·").replace("\t", "→   ")
         self._preview.configure(state="normal")
         self._preview.delete("1.0", "end")
         self._preview.insert("1.0", visible)
@@ -177,6 +184,28 @@ class TypingApp(tk.Tk):
         self._progress_value.set(0)
         self._progress_text.set(f"0 / {len(text)}")
         self._status.set("Clipboard text is ready. Focus the target editor and press F8.")
+
+    def convert_spaces_to_tabs(self) -> None:
+        if not self._source_text:
+            messagebox.showinfo("Нет текста", "Сначала загрузите код.")
+            return
+        if self._state not in (TypingState.IDLE, TypingState.ERROR):
+            messagebox.showinfo("Ввод активен", "Остановите ввод перед преобразованием.")
+            return
+        try:
+            converted = leading_spaces_to_tabs(self._source_text, self._tab_width.get())
+        except (tk.TclError, ValueError) as error:
+            messagebox.showerror("Некорректная ширина", str(error))
+            return
+        self._source_text = converted
+        visible = normalise_line_endings(converted).replace(" ", "·").replace("\t", "→   ")
+        self._preview.configure(state="normal")
+        self._preview.delete("1.0", "end")
+        self._preview.insert("1.0", visible)
+        self._preview.configure(state="disabled")
+        self._progress_value.set(0)
+        self._progress_text.set(f"0 / {len(normalise_line_endings(converted))}")
+        self._status.set("Отступы преобразованы. Проверьте предпросмотр и многострочные строки.")
 
     def toggle(self) -> None:
         if self._state in (TypingState.IDLE, TypingState.ERROR):
@@ -197,7 +226,7 @@ class TypingApp(tk.Tk):
             messagebox.showerror("Ввод недоступен", check.message)
             return
         try:
-            settings = TypingSettings(self._speed.get(), self._countdown.get(), self._variation.get(), int(self._seed.get()) if self._seed.get().strip() else None)
+            settings = TypingSettings(self._speed.get(), self._countdown.get(), self._variation.get(), int(self._seed.get()) if self._seed.get().strip() else None, self._auto_indent.get())
             settings.validate()
         except (tk.TclError, ValueError) as error:
             messagebox.showerror("Некорректные настройки", str(error))

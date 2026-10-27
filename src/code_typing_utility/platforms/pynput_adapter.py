@@ -45,6 +45,18 @@ class PynputInputBackend:
         self._controller.release(key)
 
 
+    def clear_auto_indent(self) -> None:
+        with self._controller.pressed(keyboard.Key.shift):
+            self._controller.press(keyboard.Key.home)
+            self._controller.release(keyboard.Key.home)
+        # A space replaces the selection even when it is empty; removing it avoids
+        # Backspace joining lines when there was no automatic indentation.
+        self._controller.press(" ")
+        self._controller.release(" ")
+        self._controller.press(keyboard.Key.backspace)
+        self._controller.release(keyboard.Key.backspace)
+
+
 class GlobalHotkeys:
     """F8 toggles typing and F9 stops it; held keys are debounced."""
 

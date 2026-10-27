@@ -26,6 +26,7 @@ class TypingSettings:
     countdown_seconds: int
     variation_percent: int
     seed: int | None = None
+    compensate_auto_indent: bool = False
 
     def validate(self) -> None:
         if not 40 <= self.characters_per_minute <= 600:

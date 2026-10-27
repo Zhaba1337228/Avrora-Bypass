@@ -43,6 +43,8 @@ class TypingWorker(threading.Thread):
                     self._emit(WorkerEventKind.STOPPED)
                     return
                 backend.type_character(character)
+                if character == "\n" and self._settings.compensate_auto_indent:
+                    backend.clear_auto_indent()
                 self._emit(WorkerEventKind.PROGRESS, index + 1, total)
                 following = self._text[index + 1] if index + 1 < total else None
                 if not self._wait_delay(planner.delay_after(character, following)):
