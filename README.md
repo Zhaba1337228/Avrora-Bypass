@@ -88,7 +88,7 @@ python -m code_typing_utility
 | ОС | Статус | Детали |
 | --- | --- | --- |
 | Windows | ✅ Поддерживается | Системные события через `pynput`. |
-| macOS | ⚠️ Требует проверки на Mac | Разрешите **Accessibility**; для глобальных F8/F9 может понадобиться **Input Monitoring**. На некоторых клавиатурах используйте Fn+F8/F9. |
+| macOS | ✅ Работает | Разрешите **Accessibility**; для глобальных F8/F9 может понадобиться **Input Monitoring**. На некоторых клавиатурах используйте Fn+F8/F9. |
 | Linux X11 | ✅ Поддерживается | Используется X11 backend `pynput`. |
 | Linux Wayland | ⏳ В планах | Нужен отдельный backend через desktop portals. |
 
