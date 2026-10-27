@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 import queue
+import platform
 import threading
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
 from code_typing_utility.domain.models import TypingSettings, TypingState, WorkerEvent, WorkerEventKind
-from code_typing_utility.platforms.pynput_adapter import GlobalHotkeys, PynputInputBackend, check_platform
+from code_typing_utility.platforms.pynput_adapter import GlobalHotkeys, MacHotkeys, PynputInputBackend, check_platform
+from code_typing_utility.platforms.main_thread_input import MainThreadInput
 from code_typing_utility.services.text_loader import leading_spaces_to_tabs, load_text, normalise_line_endings
 from code_typing_utility.services.typing_worker import TypingWorker
 from code_typing_utility.ui.animated_header import AnimatedHeader
@@ -31,6 +33,8 @@ class TypingApp(tk.Tk):
 
         self._source_text = ""
         self._events: queue.Queue[WorkerEvent] = queue.Queue()
+        self._hotkey_events: queue.Queue[str] = queue.Queue()
+        self._main_thread_input: MainThreadInput | None = None
         self._stop_event = threading.Event()
         self._pause_event = threading.Event()
         self._worker: TypingWorker | None = None
@@ -52,8 +56,12 @@ class TypingApp(tk.Tk):
         self._configure_styles()
         self._build_ui()
         self.protocol("WM_DELETE_WINDOW", self._close)
-        self._hotkeys = GlobalHotkeys(lambda: self.after(0, self.toggle), lambda: self.after(0, self.stop_typing))
-        self._hotkeys.start()
+        hotkey_class = MacHotkeys if platform.system() == "Darwin" else GlobalHotkeys
+        self._hotkeys = hotkey_class(lambda: self._hotkey_events.put("toggle"), lambda: self._hotkey_events.put("stop"))
+        try:
+            self._hotkeys.start()
+        except (ImportError, RuntimeError) as error:
+            messagebox.showwarning("Горячие клавиши недоступны", str(error))
         self._show_platform_status()
         self.after(40, self._consume_events)
 
@@ -218,6 +226,9 @@ class TypingApp(tk.Tk):
             self._set_state(TypingState.PAUSED, "Пауза. F8 — продолжить, F9 — стоп.")
 
     def start_typing(self) -> None:
+        if self._worker is not None and self._worker.is_alive():
+            self._status.set("Дождитесь завершения предыдущего ввода.")
+            return
         if not self._source_text:
             messagebox.showinfo("Нет текста", "Сначала загрузите файл с кодом или текстом.")
             return
@@ -234,7 +245,13 @@ class TypingApp(tk.Tk):
         self._stop_event.clear()
         self._pause_event.clear()
         self._active_settings = settings
-        self._worker = TypingWorker(self._source_text, settings, self._events, PynputInputBackend, self._stop_event, self._pause_event)
+        if platform.system() == "Darwin":
+            self._main_thread_input = MainThreadInput(PynputInputBackend, self._stop_event)
+            backend = self._main_thread_input
+            backend_factory = lambda: backend
+        else:
+            backend_factory = PynputInputBackend
+        self._worker = TypingWorker(self._source_text, settings, self._events, backend_factory, self._stop_event, self._pause_event)
         self._set_state(TypingState.COUNTDOWN, f"Отсчёт: {settings.countdown_seconds} с. Переведите фокус в целевой редактор.")
         self._worker.start()
 
@@ -245,6 +262,14 @@ class TypingApp(tk.Tk):
             self._set_state(TypingState.IDLE, "Остановка запрошена. Новые клавиши больше не отправляются.")
 
     def _consume_events(self) -> None:
+        if self._main_thread_input is not None:
+            self._main_thread_input.drain()
+        try:
+            while True:
+                command = self._hotkey_events.get_nowait()
+                self.toggle() if command == "toggle" else self.stop_typing()
+        except queue.Empty:
+            pass
         try:
             while True:
                 self._handle_event(self._events.get_nowait())
